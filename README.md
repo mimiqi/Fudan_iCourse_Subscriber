@@ -39,7 +39,7 @@
 
 登录 [iCourse 网页版](https://icourse.fudan.edu.cn)，进入你要监控的课程页面，URL 中的数字就是课程 ID：
 
-![课程id如图所示](docs\courseid.png)
+![课程id如图所示](docs/courseid.png)
 
 多门课用英文逗号隔开：`35472,30251,40123`
 
