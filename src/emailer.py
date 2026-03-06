@@ -2,6 +2,7 @@ import re
 import smtplib
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from io import BytesIO
 from PIL import Image
@@ -137,6 +138,21 @@ def _fetch_latex_image(url: str, dpi: int = 300) -> tuple:
         return None, None, None
 
 
+def _prefetch_latex_images(urls: list[str], dpi: int = 300) -> None:
+    """Pre-fetch multiple LaTeX images concurrently.
+
+    Results are stored in ``_IMAGE_CACHE`` so that subsequent calls to
+    ``_fetch_latex_image`` become instant cache hits.
+    """
+    uncached = [u for u in urls if u not in _IMAGE_CACHE]
+    if not uncached:
+        return
+    with ThreadPoolExecutor(max_workers=min(len(uncached), 8)) as pool:
+        futures = {pool.submit(_fetch_latex_image, u, dpi): u for u in uncached}
+        for future in as_completed(futures):
+            future.result()  # trigger any exception logging inside _fetch_latex_image
+
+
 def _md_to_html(md_text: str, cid_images: dict | None = None) -> str:
     """Convert Markdown to styled HTML, rendering LaTeX math as images.
 
@@ -192,6 +208,8 @@ def _md_to_html(md_text: str, cid_images: dict | None = None) -> str:
         extension_configs=_MD_EXTENSION_CONFIGS,
     )
 
+    # Build URL list and pre-fetch all LaTeX images concurrently
+    url_map: dict[str, str] = {}
     for key, original in latex_map.items():
         if original.startswith("$$"):
             latex_content = original[2:-2]
@@ -200,6 +218,21 @@ def _md_to_html(md_text: str, cid_images: dict | None = None) -> str:
                 r"\dpi{300}\bg{white}"
                 f"%20{quote(latex_content)}"
             )
+        else:
+            latex_content = original[1:-1]
+            url = (
+                "https://latex.codecogs.com/png.latex?"
+                r"\dpi{300}\bg{white}\inline"
+                f"%20{quote(latex_content)}"
+            )
+        url_map[key] = url
+
+    _prefetch_latex_images(list(url_map.values()))
+
+    for key, original in latex_map.items():
+        url = url_map[key]
+        if original.startswith("$$"):
+            latex_content = original[2:-2]
             w, h, img_data = _fetch_latex_image(url)
 
             if w and h:
@@ -219,11 +252,6 @@ def _md_to_html(md_text: str, cid_images: dict | None = None) -> str:
                 )
         else:
             latex_content = original[1:-1]
-            url = (
-                "https://latex.codecogs.com/png.latex?"
-                r"\dpi{300}\bg{white}\inline"
-                f"%20{quote(latex_content)}"
-            )
             w, h, img_data = _fetch_latex_image(url)
 
             if w and h:
