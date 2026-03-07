@@ -160,7 +160,7 @@ def _safe_filename(title: str) -> str:
     return "".join(c if c.isalnum() or c in " _-" else "_" for c in title)
 
 
-def _query_course(db: Database, course_id: str):
+def _query_course(db: Database, course_id: str) -> tuple[str, str, list[dict]] | None:
     """Return ``(course_title, teacher, lectures)`` for *course_id*.
 
     Returns ``None`` if the course is missing or has no summaries.
